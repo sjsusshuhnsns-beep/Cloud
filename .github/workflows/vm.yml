@@ -15,23 +15,16 @@ jobs:
       - name: Setup Windows & Tailscale
         shell: powershell
         run: |
-          # 1. Cài Tailscale
           curl.exe -L -o ts.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
           Start-Process -FilePath "ts.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          
-          # 2. Kết nối với Key riêng của User
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ github.event.inputs.ts_key }}" --hostname="ZUN-${{ github.run_id }}"
-          
-          # 3. Tạo Pass ngẫu nhiên & User
           $p = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 10 | % {[char]$_})
           $s = ConvertTo-SecureString $p -AsPlainText -Force
-          New-LocalUser -Name "ZunRDP" -Password $s -Description "ZunRDP Cloud"
+          New-LocalUser -Name "ZunRDP" -Password $s
           Add-LocalGroupMember -Group "Administrators" -Member "ZunRDP"
           $p | Out-File -FilePath "pass.txt" -Encoding utf8
-          
-          # 4. Mở RDP
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          # Lưu thời gian bắt đầu (Unix timestamp)
+          [DateTimeOffset]::Now.ToUnixTimeMilliseconds() | Out-File -FilePath "uptime.txt"
 
       - name: Run Agent
         run: powershell -File zunrdp.ps1 -Owner "${{ github.event.inputs.owner_name }}" -MachineID "ZUN-${{ github.run_id }}"
