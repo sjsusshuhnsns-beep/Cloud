@@ -1,0 +1,48 @@
+name: ZUNRDP_VM_SYSTEM
+on:
+  workflow_dispatch:
+    inputs:
+      owner_name:
+        description: 'Tên người tạo máy'
+        required: true
+      access_key:
+        description: 'Xác thực hệ thống'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Windows Environment
+        shell: powershell
+        run: |
+          # 1. Cài đặt Tailscale
+          curl.exe -L -o tailscale-setup.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
+          Start-Process -FilePath "tailscale-setup.exe" -ArgumentList "/quiet", "/norestart" -Wait
+          
+          # 2. Kết nối Tailscale (Thay KEY của bạn vào đây)
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="tskey-auth-xxxxxx" --hostname="ZUN-${{ github.run_id }}"
+          
+          # 3. Tạo Password ngẫu nhiên 8 ký tự
+          $randomPass = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 8 | % {[char]$_})
+          $secPass = ConvertTo-SecureString $randomPass -AsPlainText -Force
+          
+          # 4. Thiết lập User ZunRDP
+          New-LocalUser -Name "ZunRDP" -Password $secPass -Description "ZunRDP System"
+          Add-LocalGroupMember -Group "Administrators" -Member "ZunRDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "ZunRDP"
+          
+          # 5. Lưu pass để Agent đọc
+          $randomPass | Out-File -FilePath "pass.txt" -Encoding utf8
+          
+          # 6. Mở Remote Desktop
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Run ZunRDP Agent
+        run: |
+          powershell -File zunrdp.ps1 -Owner "${{ github.event.inputs.owner_name }}" -MachineID "ZUN-${{ github.run_id }}"
+          
