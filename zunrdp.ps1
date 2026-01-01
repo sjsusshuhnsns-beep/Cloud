@@ -1,5 +1,5 @@
 # ==========================================================
-# ZUNRDP CLOUD - FIXED AUTH & KEEP-ALIVE
+# ZUNRDP CLOUD - FIXED IP PUBLIC & AUTH
 # ==========================================================
 Param([string]$OWNER_NAME)
 
@@ -8,7 +8,7 @@ $VM_ID = "ZUN-" + (Get-Random -Minimum 1000 -Maximum 9999)
 $USER_FIXED = "ZunRdp"
 $PASS_FIXED = "ZunRdp@2026"
 
-# --- 1. TẠO USER VÀ SET MẬT KHẨU TRONG WINDOWS (QUAN TRỌNG) ---
+# --- 1. TẠO USER ĐĂNG NHẬP CHUẨN ---
 net user $USER_FIXED $PASS_FIXED /add
 net localgroup Administrators $USER_FIXED /add
 net localgroup "Remote Desktop Users" $USER_FIXED /add
@@ -30,8 +30,17 @@ try {
     [Wallpaper]::SystemParametersInfo(20, 0, $wallPath, 3)
 } catch {}
 
-# --- 3. GỬI THÔNG TIN VỀ WEB ---
-$IP = (Invoke-RestMethod -Uri "https://api.ipify.org")
+# --- 3. LẤY IP PUBLIC (BỎ QUA TAILSCALE) ---
+# Sử dụng phương pháp gọi API bên ngoài để lấy IP thật của máy ảo
+$IP = "Unknown"
+try {
+    $IP = (Invoke-RestMethod -Uri "https://api.ipify.org?format=text" -TimeoutSec 10)
+} catch {
+    # Nếu ipify lỗi, thử server dự phòng
+    $IP = (Invoke-RestMethod -Uri "https://ifconfig.me/ip" -TimeoutSec 10)
+}
+
+# --- 4. GỬI THÔNG TIN VỀ FIREBASE ---
 $data = @{ 
     id=$VM_ID; owner=$OWNER_NAME; ip=$IP; 
     user=$USER_FIXED; pass=$PASS_FIXED; 
@@ -40,7 +49,7 @@ $data = @{
 } | ConvertTo-Json
 Invoke-RestMethod -Uri "$API/vms/$VM_ID.json" -Method Put -Body $data
 
-# --- 4. VÒNG LẶP GIỮ MÁY (KEEP-ALIVE) ---
+# --- 5. VÒNG LẶP KEEP-ALIVE ---
 while($true) {
     try {
         $cmd = Invoke-RestMethod -Uri "$API/commands/$VM_ID.json"
