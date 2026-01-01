@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       vmid:
-        description: 'VM ID from Web'
+        description: 'VM ID'
         required: true
       owner:
         description: 'Owner Name'
@@ -13,15 +13,13 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Preparing System
+      - name: Preparing User
         run: |
-          # Bước này quan trọng: Tạo User bằng CMD trước để không bị lỗi PowerShell
           net user ZunRdp ZunRdp@2026@Cloud /add /y
           net localgroup Administrators ZunRdp /add
           
       - name: Setting up ZunRdp
         run: |
-          # Tải và chạy script chính
           Invoke-WebRequest -Uri "https://raw.githubusercontent.com/${{ github.repository }}/main/zunrdp.ps1" -OutFile "zunrdp.ps1"
           powershell -ExecutionPolicy Bypass -File "zunrdp.ps1" -OWNER_NAME "${{ github.event.inputs.owner }}"
-
+          
