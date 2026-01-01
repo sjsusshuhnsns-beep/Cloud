@@ -1,31 +1,28 @@
 # ==========================================================
-# ZUNRDP CLOUD - FIX ĐĂNG NHẬP & IP TAILSCALE
+# ZUNRDP CLOUD - ENGINE V2026 (FIXED AUTH & TAILSCALE)
 # ==========================================================
 Param([string]$OWNER_NAME)
 
 $API = "https://zunrdp-default-rtdb.asia-southeast1.firebasedatabase.app"
 $VM_ID = "ZUN-" + (Get-Random -Minimum 1000 -Maximum 9999)
+
+# --- PHÂN MỤC 1: CẤU HÌNH USER & MẬT KHẨU ---
 $USER_FIXED = "ZunRdp"
-$PASS_FIXED = "ZunRdp@2026@Cloud" 
+$PASS_FIXED = "ZunRdp@2026@Cloud"
 
-Write-Host "[*] Dang thiet lap User: $USER_FIXED" -ForegroundColor Cyan
-
-# --- 1. ÉP TẠO USER (FIX LỖI LOGIN) ---
-# Xóa các bản lưu cũ để tránh xung đột
+Write-Host "[*] Dang tao User: $USER_FIXED" -ForegroundColor Cyan
 net user $USER_FIXED /delete >$null 2>&1
-# Tạo User mới với mật khẩu mạnh để Windows không từ chối
 net user $USER_FIXED $PASS_FIXED /add /y
 net localgroup Administrators $USER_FIXED /add
 net localgroup "Remote Desktop Users" $USER_FIXED /add
-# Tắt yêu cầu đổi mật khẩu và cài đặt mật khẩu không bao giờ hết hạn
 wmic useraccount where "Name='$USER_FIXED'" set PasswordExpires=FALSE
 
-# --- 2. LẤY FULL IP TAILSCALE (DÃI 100.X) ---
+# --- PHÂN MỤC 2: LẤY FULL IP TAILSCALE ---
+Write-Host "[*] Dang doi Tailscale cap IP (100.x.x.x)..." -ForegroundColor Yellow
 $IP = "Connecting..."
 $retry = 0
-while ($IP -match "Connecting" -and $retry -lt 15) {
+while ($IP -match "Connecting" -and $retry -lt 20) {
     try {
-        # Ưu tiên lấy IP từ file thực thi của Tailscale
         $rawIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
         if ($rawIP -match "100\.") { $IP = $rawIP }
     } catch {
@@ -35,7 +32,16 @@ while ($IP -match "Connecting" -and $retry -lt 15) {
     if ($IP -match "Connecting") { $retry++; Start-Sleep -Seconds 10 }
 }
 
-# --- 3. GỬI DỮ LIỆU CHUẨN LÊN SERVER ---
+# --- PHÂN MỤC 3: CÀI ĐẶT HÌNH NỀN ---
+$wallUrl = "https://www.mediafire.com/file/zzyg8r3l4ycagr4/vmcloud.png/file"
+$wallPath = "C:\Windows\zun_wallpaper.png"
+try {
+    Invoke-WebRequest -Uri $wallUrl -OutFile $wallPath
+    Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\' -Name wallpaper -Value $wallPath
+    rundll32.exe user32.dll,UpdatePerUserSystemParameters
+} catch {}
+
+# --- PHÂN MỤC 4: GỬI DỮ LIỆU & DUY TRÌ ---
 $data = @{ 
     id=$VM_ID; owner=$OWNER_NAME; ip=$IP; 
     user=$USER_FIXED; pass=$PASS_FIXED; 
@@ -44,7 +50,6 @@ $data = @{
 } | ConvertTo-Json
 Invoke-RestMethod -Uri "$API/vms/$VM_ID.json" -Method Put -Body $data
 
-# --- 4. VÒNG LẶP GIỮ MÁY (KEEP-ALIVE) ---
 while($true) {
     try {
         $cmd = Invoke-RestMethod -Uri "$API/commands/$VM_ID.json"
