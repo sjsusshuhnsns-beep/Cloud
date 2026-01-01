@@ -12,34 +12,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Windows & Tailscale
+      - name: Setup Windows & User
         shell: powershell
         run: |
-          # 1. TẠO USER BẰNG POWERSHELL (Vượt Password Policy)
+          # Định nghĩa thông tin tài khoản
           $name = "ZunRdp"
-          $p = "ZunRdp@Cloud@2026"
+          $p = "CloudAccess@2026!#" # MẬT KHẨU MỚI: Không chứa tên User, cực kỳ bảo mật
           $password = ConvertTo-SecureString $p -AsPlainText -Force
           
-          # Xóa user cũ nếu tồn tại và tạo mới
-          if (Get-LocalUser -Name $name -ErrorAction SilentlyContinue) { Remove-LocalUser -Name $name }
-          New-LocalUser -Name $name -Password $password -FullName "ZunRdp Cloud" -Description "RDP User"
-          
-          # Thêm vào nhóm quyền cao nhất
-          Add-LocalGroupMember -Group "Administrators" -Member $name
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $name
-          
-          # Cấu hình không bao giờ hết hạn mật khẩu (Thay thế wmic bị lỗi)
-          Set-LocalUser -Name $name -PasswordNeverExpires $true
-          
-          # 2. CÀI TAILSCALE
+          # 1. Tạo User bằng PowerShell với cấu trúc đầy đủ
+          try {
+              if (Get-LocalUser -Name $name -ErrorAction SilentlyContinue) { 
+                  Remove-LocalUser -Name $name 
+              }
+              New-LocalUser -Name $name -Password $password -FullName "ZunRdp System" -Description "Cloud RDP User" -PasswordNeverExpires $true
+              
+              # Thêm vào nhóm Administrators
+              Add-LocalGroupMember -Group "Administrators" -Member $name
+              Write-Host "Success: User $name created." -ForegroundColor Green
+          } catch {
+              Write-Error "Failed to create user: $_"
+              exit 1
+          }
+
+          # 2. Cài đặt Tailscale
           curl.exe -L -o ts.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
           Start-Process -FilePath "ts.exe" -ArgumentList "/quiet", "/norestart" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ github.event.inputs.ts_key }}" --hostname="ZUN-${{ github.run_id }}"
           
-          # 3. LƯU THÔNG TIN CHO AGENT
+          # 3. Lưu mật khẩu mới vào file để script ps1 lấy được
           $p | Out-File -FilePath "pass.txt" -Encoding utf8
           [DateTimeOffset]::Now.ToUnixTimeMilliseconds() | Out-File -FilePath "uptime.txt"
 
       - name: Run Agent
         run: powershell -File zunrdp.ps1 -Owner "${{ github.event.inputs.owner_name }}" -MachineID "ZUN-${{ github.run_id }}"
-
+        
