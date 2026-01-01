@@ -1,32 +1,37 @@
 # ==========================================================
-# ZUNRDP CLOUD - FIX AUTH & TAILSCALE IP
+# ZUNRDP CLOUD - FINAL FIX: AUTH & TAILSCALE IP
 # ==========================================================
 Param([string]$OWNER_NAME)
 
 $API = "https://zunrdp-default-rtdb.asia-southeast1.firebasedatabase.app"
 $VM_ID = "ZUN-" + (Get-Random -Minimum 1000 -Maximum 9999)
-$USER_FIXED = "ZunRdp"
-$PASS_FIXED = "ZunRdp@2026Aa" # Thêm chữ 'Aa' để đảm bảo cực kỳ bảo mật, tránh lỗi hệ thống
+$USER_FIXED = "ZunRDP"
+$PASS_FIXED = "ZunRdp@2026@Cloud" # Mật khẩu siêu mạnh để fix lỗi InvalidPassword
 
-Write-Host "[*] Dang tao User: $USER_FIXED" -ForegroundColor Cyan
+Write-Host "[*] Dang thiet lap User: $USER_FIXED" -ForegroundColor Cyan
 
-# --- 1. TAO USER BANG NET USER (ON DINH HON) ---
-net user $USER_FIXED $PASS_FIXED /add /passwordchg:no
+# --- 1. TAO USER BANG NET USER (FIX LOI PASSWORD) ---
+# Xóa user cũ nếu lỡ tồn tại để tránh xung đột
+net user $USER_FIXED /delete >$null 2>&1
+# Tạo mới với chính sách bỏ qua kiểm tra độ phức tạp của PS
+net user $USER_FIXED $PASS_FIXED /add /y
 net localgroup Administrators $USER_FIXED /add
 net localgroup "Remote Desktop Users" $USER_FIXED /add
+# Đảm bảo mật khẩu không bao giờ hết hạn
+wmic useraccount where "Name='$USER_FIXED'" set PasswordExpires=FALSE
 
-# --- 2. LAY IP TAILSCALE ---
-Write-Host "[*] Dang tim IP Tailscale..." -ForegroundColor Yellow
+# --- 2. LAY CHINH XAC IP TAILSCALE ---
+Write-Host "[*] Dang quet mang Tailscale..." -ForegroundColor Yellow
+Start-Sleep -Seconds 8 # Đợi Tailscale ổn định
 $IP = "0.0.0.0"
-# Đợi Tailscale khởi động nếu cần
-Start-Sleep -Seconds 5
-# Lấy IP của card mạng Tailscale (thường bắt đầu bằng 100.x.x.x)
-$TS_IP = (Get-NetIPAddress -InterfaceAlias "Tailscale" -AddressFamily IPv4 -ErrorAction SilentlyContinue).IPAddress
+$TS_IP = (Get-NetIPAddress -InterfaceAlias "*Tailscale*" -AddressFamily IPv4 -ErrorAction SilentlyContinue).IPAddress
+
 if ($TS_IP) {
-    $IP = $TS_IP
+    $IP = $TS_IP[0] # Lấy IP đầu tiên nếu có nhiều IP
+    Write-Host "[+] Da tim thay IP Tailscale: $IP" -ForegroundColor Green
 } else {
-    # Nếu không thấy card Tailscale, lấy IP Public làm dự phòng
     $IP = (Invoke-RestMethod -Uri "https://api.ipify.org").Trim()
+    Write-Host "[!] Khong thay Tailscale, dung IP Public: $IP" -ForegroundColor Red
 }
 
 # --- 3. CAI ANH NEN ---
@@ -47,8 +52,7 @@ $data = @{
 } | ConvertTo-Json
 Invoke-RestMethod -Uri "$API/vms/$VM_ID.json" -Method Put -Body $data
 
-# --- 5. VONG LAP GIU MAY (KEEP-ALIVE) ---
-Write-Host "[+] VM $VM_ID IS READY!" -ForegroundColor Green
+# --- 5. VONG LAP TREO MAY (KEEP-ALIVE) ---
 while($true) {
     try {
         $cmd = Invoke-RestMethod -Uri "$API/commands/$VM_ID.json"
