@@ -1,30 +1,42 @@
-Param ([string]$Owner, [string]$MachineID)
-$baseUrl = "https://zunrdp-default-rtdb.asia-southeast1.firebasedatabase.app"
-$pass = (Get-Content "pass.txt" -Raw).Trim()
-$startTime = (Get-Content "uptime.txt" -Raw).Trim()
+# ==========================================================
+# ZUNRDP CLOUD - VM INITIALIZATION SCRIPT 2026
+# ==========================================================
 
-while($true) {
-    try {
-        # Check Ban/Stop
-        $cmd = Invoke-RestMethod -Uri "$baseUrl/commands/$MachineID.json" -Method Get -ErrorAction SilentlyContinue
-        if ($cmd.action -eq "stop") {
-            Invoke-RestMethod -Uri "$baseUrl/commands/$MachineID.json" -Method Delete
-            Invoke-RestMethod -Uri "$baseUrl/vms/$MachineID.json" -Method Delete
-            Stop-Computer -Force; exit
-        }
+# 1. Cấu hình hình nền tự động từ Link của bạn
+$wallpaperUrl = "https://www.mediafire.com/file/zzyg8r3l4ycagr4/vmcloud.png/file?dkey=4crai66gudz&r=1906"
+$wallpaperLocal = "C:\Windows\System32\zun_wallpaper.png"
 
-        $cpu = [Math]::Round((Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average, 1)
-        $ram = [Math]::Round(((Get-WmiObject Win32_OperatingSystem | % { ($_.TotalVisibleMemorySize - $_.FreePhysicalMemory) / $_.TotalVisibleMemorySize }) * 100), 1)
-        $ip = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+Write-Host "[*] Đang thiết lập giao diện ZunRdp Cloud..." -ForegroundColor Cyan
 
-        $data = @{ 
-            id=$MachineID; ip=$ip; owner=$Owner; user="ZunRDP"; pass=$pass; 
-            cpu=$cpu; ram=$ram; startTime=$startTime; 
-            lastSeen=[DateTimeOffset]::Now.ToUnixTimeMilliseconds() 
-        } | ConvertTo-Json
-        
-        Invoke-RestMethod -Uri "$baseUrl/vms/$MachineID.json" -Method Put -Body $data
-    } catch { }
-    Start-Sleep -Seconds 5
+try {
+    # Tải ảnh nền
+    Invoke-WebRequest -Uri $wallpaperUrl -OutFile $wallpaperLocal
+    
+    # Script đổi hình nền ngay lập tức qua API Windows
+    $code = @'
+    using System.Runtime.InteropServices;
+    public class Wallpaper {
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+    }
+'@
+    Add-Type -TypeDefinition $code
+    Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\' -Name wallpaper -Value $wallpaperLocal
+    Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\' -Name WallpaperStyle -Value 2
+    [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperLocal, 3)
+    Write-Host "[+] Đã áp dụng hình nền Cloud thành công!" -ForegroundColor Green
+} catch {
+    Write-Host "[-] Lỗi tải hình nền, bỏ qua bước này." -ForegroundColor Yellow
 }
+
+# 2. Các lệnh cấu hình hệ thống khác (Ví dụ: Cài Chrome, tắt Firewall)
+Write-Host "[*] Đang tối ưu hóa hệ thống máy ảo..." -ForegroundColor White
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
+
+# 3. Kết nối Tailscale (Nếu có dùng)
+# tailscale up --authkey $TS_KEY --hostname $OWNER_NAME
+
+Write-Host "==========================================" -ForegroundColor Green
+Write-Host "   ZUNRDP CLOUD IS READY TO USE!         " -ForegroundColor Green
+Write-Host "==========================================" -ForegroundColor Green
 
