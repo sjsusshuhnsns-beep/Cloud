@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
     inputs:
       owner_name: { required: true }
-      vmid: { required: true }
       ts_key: { required: true }
 
 jobs:
@@ -16,21 +15,24 @@ jobs:
       - name: Setup Windows & Tailscale
         shell: powershell
         run: |
-          # 1. Fix lỗi Login: Tạo User hệ thống ngay lập tức
+          # 1. Tạo User bằng lệnh net (Fix lỗi "Password did not work")
           $p = "ZunRdp@2026@Cloud"
           net user ZunRdp $p /add /y
           net localgroup Administrators ZunRdp /add
           net localgroup "Remote Desktop Users" ZunRdp /add
           
-          # 2. Cài đặt Tailscale và nhận diện Hostname
+          # 2. Cài đặt Tailscale
           curl.exe -L -o ts.exe https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe
           Start-Process -FilePath "ts.exe" -ArgumentList "/quiet", "/norestart" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ github.event.inputs.ts_key }}" --hostname="${{ github.event.inputs.vmid }}"
+          
+          # Đặt Hostname cố định là ZUN-USER để script dễ tìm IP
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="${{ github.event.inputs.ts_key }}" --hostname="ZUN-${{ github.run_id }}"
           
           # 3. Lưu thông tin cho Agent
           $p | Out-File -FilePath "pass.txt" -Encoding utf8
           [DateTimeOffset]::Now.ToUnixTimeMilliseconds() | Out-File -FilePath "uptime.txt"
 
       - name: Run Agent
-        run: powershell -File zunrdp.ps1 -Owner "${{ github.event.inputs.owner_name }}" -MachineID "${{ github.event.inputs.vmid }}"
-        
+        # Truyền ID là ZUN-runid để đồng bộ với Tailscale
+        run: powershell -File zunrdp.ps1 -Owner "${{ github.event.inputs.owner_name }}" -MachineID "ZUN-${{ github.run_id }}"
+
