@@ -1,6 +1,11 @@
 Param([string]$Owner, [string]$MachineID)
 
-# Cấu hình RDP nhanh để có thể vào máy ngay
+# Hiện bảng tin ZUNRDP CLOUD lên Desktop
+if (Test-Path "C:\ZunTools\Bginfo.exe") {
+    Start-Process "C:\ZunTools\Bginfo.exe" -ArgumentList "C:\ZunTools\config.bgi /silent /timer:0 /nolicprompt"
+}
+
+# Cấu hình RDP nhanh
 Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
 Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0
 
@@ -9,7 +14,7 @@ $Username = "ZunRdp"
 $Password = (Get-Content "pass.txt" -Raw).Trim()
 $Uptime = (Get-Content "uptime.txt" -Raw).Trim()
 
-# --- [1] LẤY IP TAILSCALE NHANH ---
+# --- LẤY IP TAILSCALE ---
 $IP = "Connecting..."
 for ($i=0; $i -lt 10; $i++) {
     $tsPath = "C:\Program Files\Tailscale\tailscale.exe"
@@ -20,33 +25,30 @@ for ($i=0; $i -lt 10; $i++) {
     Start-Sleep -Seconds 2
 }
 
-# --- [2] GỬI DỮ LIỆU BAN ĐẦU (ĐỂ BIỂU ĐỒ HIỆN SỐ NGAY) ---
+# --- GỬI DỮ LIỆU (FIX LỖI [object Object]) ---
 $vmData = @{
     id        = $MachineID
     owner     = $Owner
     ip        = $IP
     user      = $Username
     pass      = "$Password"
-    cpu       = 5    # Số mặc định để biểu đồ CPU nhảy
-    ram       = 15   # Số mặc định để biểu đồ RAM nhảy
+    cpu       = 5
+    ram       = 15
     startTime = [long]$Uptime
 }
 $jsonPayload = $vmData | ConvertTo-Json -Compress
 Invoke-RestMethod -Uri "$API/vms/$MachineID.json" -Method Put -Body $jsonPayload
 
-# --- [3] VÒNG LẶP CẬP NHẬT BIỂU ĐỒ CPU/RAM ---
+# --- CẬP NHẬT BIỂU ĐỒ CPU/RAM ---
 while($true) {
     try {
-        # Lấy thông số thực tế từ Windows
         $cpuLoad = [int](Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
         $osInfo = Get-WmiObject Win32_OperatingSystem
         $ramLoad = [int][Math]::Round((( $osInfo.TotalVisibleMemorySize - $osInfo.FreePhysicalMemory ) / $osInfo.TotalVisibleMemorySize ) * 100)
         
-        # Gửi dữ liệu cập nhật biểu đồ
         $updateData = @{ cpu = $cpuLoad; ram = $ramLoad } | ConvertTo-Json -Compress
         Invoke-RestMethod -Uri "$API/vms/$MachineID.json" -Method Patch -Body $updateData
         
-        # Kiểm tra lệnh tắt máy từ Web
         $cmd = Invoke-RestMethod -Uri "$API/commands/$MachineID.json"
         if ($cmd.action -eq "stop") {
             Invoke-RestMethod -Uri "$API/vms/$MachineID.json" -Method Delete
